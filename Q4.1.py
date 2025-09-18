@@ -34,16 +34,16 @@ print("Using device:", device)
 # ----------------------------
 # Hyperparameters
 # ----------------------------
-BATCH_SIZE = 128
-LEARNING_RATE = 1e-4 # smaller, more stable
-NUM_EPOCHS = 50  # increased training amount
-BETA = 0.1  # weighting for KL divergence term
+BATCH_SIZE = 128        # Number of images per training block 
+LEARNING_RATE = 1e-4    # smaller, more stable
+NUM_EPOCHS = 50         # higher training iterations to allow VAE to produce manifold
+BETA = 0.1              # weighting for KL divergence term
 
 from google.colab import drive
 drive.mount('/content/gdrive')
 
 # ----------------------------
-# Custom Dataset Class
+# Custom Dataset Class to read images and convert to grayscale
 # ----------------------------
 class BrainMRIDataset(Dataset):
     def __init__(self, root_dir, transform=None):
@@ -68,7 +68,7 @@ class BrainMRIDataset(Dataset):
 
         return image   # no labels, so return only the image
     
-    # Path to Google Drive dataset
+# Path to Google Drive dataset
 train_dir = "/content/gdrive/MyDrive/keras_png_slices_data/keras_png_slices_train"
 test_dir  = "/content/gdrive/MyDrive/keras_png_slices_data/keras_png_slices_test"
 
@@ -94,7 +94,8 @@ class CNNVAE(nn.Module):
         super(CNNVAE, self).__init__()
         self.latent_dim = latent_dim
 
-        # Encoder
+        # Encoder with 4 conv layers, each reducing spatial size by 1/2
+        # Increase feature channels
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 32, 4, stride=2, padding=1),   # (B, 32, 128, 128)
             nn.ReLU(),
@@ -118,7 +119,7 @@ class CNNVAE(nn.Module):
         self.fc_logvar = nn.Linear(self.flatten_dim, latent_dim)
         self.fc_decode = nn.Linear(latent_dim, self.flatten_dim)
 
-        # Decoder
+        # Decoder. 4 transpose convolution layers that increases spatial size by 1/2
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1), # (B, 128, 32, 32)
             nn.ReLU(),
@@ -130,6 +131,7 @@ class CNNVAE(nn.Module):
             nn.Sigmoid(),
         )
 
+    # Uses backpropagation through stochastic sampling
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
@@ -148,6 +150,7 @@ class CNNVAE(nn.Module):
         out = self.decoder(h_dec)
         return out, mu, logvar
 
+    # Decodes a latent vector to image, useful for manifold visualization
     def decode(self, z):
         """
         Decode a latent vector z to image
